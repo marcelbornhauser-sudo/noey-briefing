@@ -1,0 +1,267 @@
+name: Daily Briefing Update
+
+on:
+  schedule:
+    - cron: '0 5 * * *'  # jeden Tag um 06:00 Uhr Schweizer Zeit (UTC+1)
+  workflow_dispatch:  # auch manuell auslösbar
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch news and update index.html
+        run: |
+          python3 << 'PYTHON'
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          import json
+          import datetime
+          import html
+
+          def fetch_rss(url, max_items=3):
+              try:
+                  req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                  with urllib.request.urlopen(req, timeout=10) as response:
+                      content = response.read()
+                  root = ET.fromstring(content)
+                  items = []
+                  for item in root.findall('.//item')[:max_items]:
+                      title = item.findtext('title', '').strip()
+                      desc = item.findtext('description', '').strip()
+                      link = item.findtext('link', '').strip()
+                      # Clean HTML from description
+                      import re
+                      desc = re.sub('<[^>]+>', '', desc)
+                      desc = desc[:200] + '...' if len(desc) > 200 else desc
+                      if title:
+                          items.append({'title': html.escape(title), 'desc': html.escape(desc), 'link': html.escape(link)})
+                  return items
+              except Exception as e:
+                  print(f"Error fetching {url}: {e}")
+                  return []
+
+          def fetch_weather():
+              try:
+                  # Open-Meteo API - kostenlos, kein Key nötig
+                  # Kreuzlingen: 47.65, 9.17
+                  url = 'https://api.open-meteo.com/v1/forecast?latitude=47.65&longitude=9.17&current=temperature_2m,weathercode,windspeed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=Europe%2FBerlin&forecast_days=1'
+                  req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                  with urllib.request.urlopen(req, timeout=10) as response:
+                      data = json.loads(response.read())
+                  
+                  current = data['current']
+                  daily = data['daily']
+                  temp = round(current['temperature_2m'])
+                  temp_min = round(daily['temperature_2m_min'][0])
+                  temp_max = round(daily['temperature_2m_max'][0])
+                  wind = round(current['windspeed_10m'])
+                  code = current['weathercode']
+                  
+                  # Weather code to emoji + text
+                  if code == 0:
+                      icon, desc = '☀️', 'Klar'
+                  elif code in [1, 2, 3]:
+                      icon, desc = '⛅', 'Teilweise bewölkt'
+                  elif code in [45, 48]:
+                      icon, desc = '🌫️', 'Nebel'
+                  elif code in [51, 53, 55]:
+                      icon, desc = '🌦️', 'Nieselregen'
+                  elif code in [61, 63, 65]:
+                      icon, desc = '🌧️', 'Regen'
+                  elif code in [71, 73, 75]:
+                      icon, desc = '❄️', 'Schnee'
+                  elif code in [80, 81, 82]:
+                      icon, desc = '🌧️', 'Schauer'
+                  elif code in [95, 96, 99]:
+                      icon, desc = '⛈️', 'Gewitter'
+                  else:
+                      icon, desc = '🌤️', 'Wechselhaft'
+                  
+                  jacket = temp < 15
+                  return {
+                      'temp': temp,
+                      'temp_min': temp_min,
+                      'temp_max': temp_max,
+                      'wind': wind,
+                      'icon': icon,
+                      'desc': desc,
+                      'jacket': jacket
+                  }
+              except Exception as e:
+                  print(f"Weather error: {e}")
+                  return None
+
+          # RSS Feeds
+          world_news = fetch_rss('https://www.srf.ch/news/bnf/rss/1890442')
+          swiss_news = fetch_rss('https://www.srf.ch/news/bnf/rss/1890444')
+          local_news = fetch_rss('https://www.seemoz.de/feed/')
+          
+          # Events - Kreuzlingen/Bodensee
+          events = fetch_rss('https://www.bodensee-vorarlberg.com/events/feed/')
+          if not events:
+              events = fetch_rss('https://www.thurgauer-zeitung.ch/feed/')
+
+          weather = fetch_weather()
+
+          now = datetime.datetime.now()
+          weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag']
+          months = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+          date_str = f"{weekdays[now.weekday()]}, {now.day}. {months[now.month-1]} {now.year}"
+
+          def news_html(items, empty_msg='Nicht verfügbar'):
+              if not items:
+                  return f'<div class="news-item"><p class="news-meta">{empty_msg}</p></div>'
+              out = ''
+              for item in items:
+                  out += f'''<div class="news-item">
+                    <h3 class="news-title"><a href="{item["link"]}" target="_blank" style="color:inherit;text-decoration:none;">{item["title"]}</a></h3>
+                    <p class="news-meta">{item["desc"]}</p>
+                  </div>'''
+              return out
+
+          if weather:
+              jacket_html = '<span class="badge badge-warning">🧥 Jacke empfohlen</span>' if weather['jacket'] else '<span class="badge badge-success">👕 Kein Mantel nötig</span>'
+              weather_html = f'''<div class="weather-card">
+                <div class="weather-main">
+                  <span class="weather-icon">{weather["icon"]}</span>
+                  <span class="weather-temp">{weather["temp"]}°</span>
+                </div>
+                <div class="weather-details">
+                  <span>{weather["desc"]} · {weather["temp_min"]}°–{weather["temp_max"]}° · {weather["wind"]} km/h</span>
+                  {jacket_html}
+                </div>
+              </div>'''
+          else:
+              weather_html = '<div class="news-item"><p class="news-meta">Nicht verfügbar</p></div>'
+
+          html_content = f'''<!DOCTYPE html>
+          <html lang="de">
+          <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta name="mobile-web-app-capable" content="yes">
+          <meta name="apple-mobile-web-app-capable" content="yes">
+          <title>Guten Morgen von Noey</title>
+          <style>
+          @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Inter:wght@300;400;500;600&display=swap');
+          :root {{
+            --gold: #c9a84c;
+            --golden-light: #e8c96d;
+            --night: #0d1117;
+            --card: #1e2535;
+            --text: #e8e0d0;
+            --muted: #8892a4;
+            --thai-pink: #d45b8a;
+          }}
+          * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+          body {{ background: var(--night); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 3rem; overflow-x: hidden; }}
+          .hero {{ position: relative; width: 100%; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }}
+          .glide {{ position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 60%, rgba(201,168,76,0.15) 0%, transparent 70%); opacity: 0; transition: opacity 1.2s ease; }}
+          .lotus-container {{ position: relative; width: 120px; height: 120px; margin-bottom: 2rem; }}
+          .lotus {{ width: 120px; height: 120px; }}
+          .greeting {{ font-family: 'Playfair Display', serif; font-size: clamp(2.2rem, 6vw, 3.5rem); color: var(--gold); text-align: center; line-height: 1.2; }}
+          .greeting em {{ display: block; font-style: italic; color: var(--golden-light); font-size: 0.6em; margin-top: 0.3rem; }}
+          .date-pill {{ margin-top: 1.5rem; background: rgba(201,168,76,0.1); border: 1px solid rgba(201,168,76,0.3); border-radius: 100px; padding: 0.4rem 1.2rem; font-size: 0.85rem; color: var(--gold); letter-spacing: 0.05em; }}
+          .scroll-hint {{ position: absolute; bottom: 2rem; font-size: 0.75rem; color: var(--muted); letter-spacing: 0.2em; animation: pulse 2s infinite; }}
+          @keyframes pulse {{ 0%,100% {{ opacity:0.4 }} 50% {{ opacity:1 }} }}
+          .content {{ width: 100%; max-width: 680px; padding: 0 1.5rem; }}
+          .section {{ margin-bottom: 2.5rem; }}
+          .section-header {{ display: flex; align-items: center; gap: 0.6rem; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.18em; color: var(--gold); text-transform: uppercase; margin-bottom: 1rem; padding-bottom: 0.6rem; border-bottom: 1px solid rgba(201,168,76,0.2); }}
+          .card {{ background: var(--card); border-radius: 16px; padding: 1.2rem 1.4rem; border: 1px solid rgba(255,255,255,0.06); }}
+          .weather-card {{ background: linear-gradient(135deg, #1a2a3a 0%, var(--card) 100%); border-radius: 16px; padding: 1.4rem; border: 1px solid rgba(255,255,255,0.08); }}
+          .weather-main {{ display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem; }}
+          .weather-icon {{ font-size: 2.5rem; }}
+          .weather-temp {{ font-family: 'Playfair Display', serif; font-size: 2.8rem; color: var(--text); }}
+          .weather-details {{ font-size: 0.85rem; color: var(--muted); display: flex; flex-direction: column; gap: 0.4rem; }}
+          .badge {{ display: inline-block; padding: 0.25rem 0.7rem; border-radius: 100px; font-size: 0.75rem; font-weight: 500; margin-top: 0.3rem; }}
+          .badge-warning {{ background: rgba(201,168,76,0.15); color: var(--gold); border: 1px solid rgba(201,168,76,0.3); }}
+          .badge-success {{ background: rgba(80,200,120,0.12); color: #6fcf97; border: 1px solid rgba(80,200,120,0.25); }}
+          .news-item {{ padding: 1rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }}
+          .news-item:last-child {{ border-bottom: none; padding-bottom: 0; }}
+          .news-item:first-child {{ padding-top: 0; }}
+          .news-title {{ font-size: 0.95rem; font-weight: 500; color: var(--text); margin-bottom: 0.3rem; line-height: 1.4; }}
+          .news-meta {{ font-size: 0.8rem; color: var(--muted); line-height: 1.5; }}
+          .reload-btn {{ display: flex; align-items: center; gap: 0.5rem; background: rgba(201,168,76,0.1); border: 1px solid rgba(201,168,76,0.3); color: var(--gold); padding: 0.7rem 1.6rem; border-radius: 100px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; margin: 0 auto; }}
+          .reload-btn:hover {{ background: rgba(201,168,76,0.2); }}
+          .updated-time {{ text-align: center; font-size: 0.72rem; color: var(--muted); margin-bottom: 1rem; }}
+          </style>
+          </head>
+          <body>
+          <div class="hero" id="hero">
+            <div class="glide" id="glide"></div>
+            <div class="lotus-container">
+              <svg class="lotus" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                <ellipse cx="60" cy="75" rx="18" ry="28" fill="#d45b8a" opacity="0.9" transform="rotate(-30 60 75)"/>
+                <ellipse cx="60" cy="75" rx="18" ry="28" fill="#e07aa0" opacity="0.85" transform="rotate(0 60 75)"/>
+                <ellipse cx="60" cy="75" rx="18" ry="28" fill="#d45b8a" opacity="0.9" transform="rotate(30 60 75)"/>
+                <ellipse cx="60" cy="75" rx="16" ry="26" fill="#e8a0bc" opacity="0.8" transform="rotate(-15 60 75)"/>
+                <ellipse cx="60" cy="75" rx="16" ry="26" fill="#e8a0bc" opacity="0.8" transform="rotate(15 60 75)"/>
+                <circle cx="60" cy="68" r="10" fill="#c9a84c"/>
+                <circle cx="60" cy="68" r="7" fill="#e8c96d"/>
+              </svg>
+            </div>
+            <h1 class="greeting">Guten Morgen<em>von Noey</em></h1>
+            <div class="date-pill">{date_str}</div>
+            <div class="scroll-hint">▼ SCROLLEN</div>
+          </div>
+
+          <div class="content">
+            <p class="updated-time">Zuletzt aktualisiert: {now.strftime("%d.%m.%Y %H:%M")} Uhr</p>
+
+            <div class="section">
+              <div class="section-header">🌤️ Wetter heute</div>
+              {weather_html}
+            </div>
+
+            <div class="section">
+              <div class="section-header">🌍 Weltgeschehen</div>
+              <div class="card">{news_html(world_news)}</div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">🇨🇭 Schweiz</div>
+              <div class="card">{news_html(swiss_news)}</div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">📍 Kreuzlingen / Bodensee</div>
+              <div class="card">{news_html(local_news)}</div>
+            </div>
+
+            <div class="section">
+              <div class="section-header">🎉 Events Kreuzlingen</div>
+              <div class="card">{news_html(events, 'Keine aktuellen Events gefunden')}</div>
+            </div>
+
+            <button class="reload-btn" onclick="location.reload()">↺ Alles neu laden</button>
+          </div>
+
+          <script>
+          window.addEventListener('load', () => {{
+            document.getElementById('glide').style.opacity = '1';
+          }});
+          </script>
+          </body>
+          </html>'''
+
+          # Clean up indentation
+          lines = html_content.split('\n')
+          cleaned = []
+          for line in lines:
+              cleaned.append(line.strip() if line.strip() else '')
+          
+          with open('index.html', 'w', encoding='utf-8') as f:
+              f.write('\n'.join(cleaned))
+          
+          print("index.html updated successfully!")
+          PYTHON
+
+      - name: Commit and push
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "Daily Briefing Bot"
+          git add index.html
+          git diff --staged --quiet || git commit -m "Daily briefing update $(date +'%Y-%m-%d')"
+          git push
