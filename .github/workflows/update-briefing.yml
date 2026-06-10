@@ -100,7 +100,7 @@ jobs:
           local_news = fetch_rss('https://www.seemoz.de/feed/')
           
           # Events - Kreuzlingen/Bodensee
-          events = fetch_rss('https://www.tagblatt.ch/rss-feeds/arbon-kreuzlingen-weinfelden')
+          events = fetch_rss('https://www.kreuzlingen.ch/wir-fuer-sie/terminkalender-stadt?type=9818')
           
 
           weather = fetch_weather()
