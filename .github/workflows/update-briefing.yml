@@ -95,14 +95,14 @@ jobs:
                   return None
 
           # RSS Feeds
-          world_news = fetch_rss('https://www.srf.ch/news/bnf/rss/1890442')
-          swiss_news = fetch_rss('https://www.srf.ch/news/bnf/rss/1890444')
+          world_news = fetch_rss('https://www.srf.ch/news/bnf/rss/1646')
+          swiss_news = fetch_rss('https://www.srf.ch/news/bnf/rss/19032223')
           local_news = fetch_rss('https://www.seemoz.de/feed/')
           
           # Events - Kreuzlingen/Bodensee
-          events = fetch_rss('https://www.bodensee-vorarlberg.com/events/feed/')
+          events = fetch_rss('https://www.tagblatt.ch/rss-feeds/arbon-kreuzlingen-weinfelden')
           if not events:
-              events = fetch_rss('https://www.thurgauer-zeitung.ch/feed/')
+          
 
           weather = fetch_weather()
 
