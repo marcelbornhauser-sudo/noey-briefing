@@ -100,7 +100,7 @@ jobs:
           local_news = fetch_rss('https://www.seemoz.de/feed/')
           
           # 📰 Bodensee News
-          events = fetch_rss('https://www.seemoz.de/feed/')
+          events = fetch_rss('https://www.tagblatt.ch/rss-feeds/arbon-kreuzlingen-weinfelden')
           
 
           weather = fetch_weather()
@@ -230,10 +230,7 @@ jobs:
               <div class="card">{news_html(local_news)}</div>
             </div>
 
-            <div class="section">
-              <div class="section-header">🎉 Events Kreuzlingen</div>
-              <div class="card">{news_html(events, 'Keine aktuellen Events gefunden')}</div>
-            </div>
+            
 
             <button class="reload-btn" onclick="location.reload()">↺ Alles neu laden</button>
           </div>
