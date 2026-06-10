@@ -4,7 +4,8 @@ on:
   schedule:
     - cron: '0 5 * * *'  # jeden Tag um 06:00 Uhr Schweizer Zeit (UTC+1)
   workflow_dispatch:  # auch manuell auslösbar
-
+permissions:
+  contents: write
 jobs:
   update:
     runs-on: ubuntu-latest
