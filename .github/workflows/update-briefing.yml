@@ -99,8 +99,8 @@ jobs:
           swiss_news = fetch_rss('https://www.srf.ch/news/bnf/rss/19032223')
           local_news = fetch_rss('https://www.seemoz.de/feed/')
           
-          # Events - Kreuzlingen/Bodensee
-          events = fetch_rss('https://www.kreuzlingen.ch/wir-fuer-sie/terminkalender-stadt?type=9818&tx_cal_controller[format]=rss')
+          # 📰 News Kreuzlingen
+          events = fetch_rss('https://news.google.com/rss/search?q=Kreuzlingen&hl=de&gl=CH&ceid=CH:de')
           
 
           weather = fetch_weather()
