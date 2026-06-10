@@ -99,8 +99,7 @@ jobs:
           swiss_news = fetch_rss('https://www.srf.ch/news/bnf/rss/19032223')
           local_news = fetch_rss('https://www.seemoz.de/feed/')
           
-          # 📰 Bodensee News
-          events = fetch_rss('https://www.tagblatt.ch/rss-feeds/arbon-kreuzlingen-weinfelden')
+          
           
 
           weather = fetch_weather()
